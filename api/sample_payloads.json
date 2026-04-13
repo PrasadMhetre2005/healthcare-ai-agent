@@ -1,0 +1,42 @@
+{
+  "care_gaps_example": {
+    "patient_id": "P-1001",
+    "age": 56,
+    "conditions": ["Type 2 Diabetes", "Hypertension"],
+    "medications": [
+      {
+        "name": "Metformin",
+        "last_refill_date": "2025-11-15",
+        "days_supply": 30,
+        "adherence_rate": 0.72
+      }
+    ],
+    "last_visit_date": "2024-12-01",
+    "labs": [
+      { "name": "LDL", "value": "130", "last_date": "2025-09-10" }
+    ],
+    "vaccinations": ["Flu 2024"],
+    "missed_appointments_last_12mo": 2
+  },
+  "appointment_opt_example": {
+    "patient_id": "P-1001",
+    "preferred_days": ["2026-04-15", "2026-04-16"],
+    "preferred_time": "morning",
+    "available_slots": [
+      {
+        "start": "2026-04-15T09:00:00",
+        "end": "2026-04-15T09:20:00",
+        "provider": "Dr. Patel"
+      },
+      {
+        "start": "2026-04-15T13:00:00",
+        "end": "2026-04-15T13:20:00",
+        "provider": "Dr. Patel"
+      }
+    ]
+  },
+  "qa_example": {
+    "patient_id": "P-1001",
+    "question": "Is it safe to take metformin if I missed a dose yesterday?"
+  }
+}
