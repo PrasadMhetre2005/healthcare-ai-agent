@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "reminders": [
+    {
+      "to": "+15551234567",
+      "template": "care_gap",
+      "data": {
+        "patient_name": "Sarah",
+        "gap": "Annual exam",
+        "due": "this week"
+      }
+    },
+    {
+      "to": "+15551234567",
+      "template": "appointment",
+      "data": {
+        "patient_name": "Sarah",
+        "provider": "Dr. Patel",
+        "date": "Apr 20 at 10:00 AM"
+      }
+    }
+  ]
+}

@@ -1,13 +1,75 @@
 from datetime import datetime, timedelta
 import os
+import json
+import sqlite3
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 from twilio.rest import Client
 
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "sms_log.db")
+
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sms_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                to_number TEXT NOT NULL,
+                message TEXT NOT NULL,
+                template TEXT,
+                status TEXT NOT NULL,
+                sid TEXT,
+                error TEXT,
+                attempts INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+
+def log_sms(to_number, message, template, status, sid=None, error=None, attempts=1):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO sms_log (to_number, message, template, status, sid, error, attempts, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                to_number,
+                message,
+                template,
+                status,
+                sid,
+                error,
+                attempts,
+                datetime.utcnow().isoformat() + "Z",
+            ),
+        )
+        conn.commit()
+
+
+def already_sent_today(to_number, template):
+    if not template:
+        return False
+    today = datetime.utcnow().date().isoformat()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            """
+            SELECT COUNT(1) FROM sms_log
+            WHERE to_number = ? AND template = ? AND created_at LIKE ?
+            """,
+            (to_number, template, f"{today}%"),
+        )
+        row = cur.fetchone()
+        return row and row[0] > 0
 
 
 def _parse_iso_date(value: str):
@@ -182,13 +244,42 @@ def send_sms_alert():
         )
 
     client = Client(account_sid, auth_token)
-    message = client.messages.create(
-        body=body,
-        from_=from_number,
-        to=to_number,
-    )
-
-    return jsonify({"status": "sent", "sid": message.sid, "message": body})
+    attempts = 0
+    last_error = None
+    while attempts < 3:
+        attempts += 1
+        try:
+            message = client.messages.create(
+                body=body,
+                from_=from_number,
+                to=to_number,
+            )
+            log_sms(
+                to_number=to_number,
+                message=body,
+                template=template,
+                status="sent",
+                sid=message.sid,
+                attempts=attempts,
+            )
+            return jsonify(
+                {"status": "sent", "sid": message.sid, "message": body, "attempts": attempts}
+            )
+        except Exception as exc:
+            last_error = str(exc)
+            if attempts >= 3:
+                log_sms(
+                    to_number=to_number,
+                    message=body,
+                    template=template,
+                    status="failed",
+                    error=last_error,
+                    attempts=attempts,
+                )
+                return (
+                    jsonify({"status": "failed", "error": last_error, "attempts": attempts}),
+                    502,
+                )
 
 
 def build_sms_message(template: str, data: dict) -> str:
@@ -210,5 +301,47 @@ def build_sms_message(template: str, data: dict) -> str:
     return data.get("message", "Healthcare notification.")
 
 
+def load_reminders():
+    path = os.path.join(os.path.dirname(__file__), "reminders.json")
+    if not os.path.exists(path):
+        return {"enabled": False, "reminders": []}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def run_daily_reminders():
+    if os.getenv("DAILY_REMINDERS_ENABLED", "true").lower() != "true":
+        return
+    data = load_reminders()
+    if not data.get("enabled", True):
+        return
+    for reminder in data.get("reminders", []):
+        to_number = reminder.get("to")
+        template = reminder.get("template")
+        if already_sent_today(to_number, template):
+            continue
+        payload = {
+            "to": to_number,
+            "template": template,
+            "data": reminder.get("data", {}),
+        }
+        with app.test_request_context(json=payload):
+            send_sms_alert()
+
+
+def start_scheduler():
+    scheduler = BackgroundScheduler(daemon=True)
+    time_str = os.getenv("DAILY_REMINDERS_TIME", "09:00")
+    hour, minute = time_str.split(":")
+    scheduler.add_job(run_daily_reminders, "cron", hour=hour, minute=minute)
+    scheduler.start()
+
+
 if __name__ == "__main__":
+    init_db()
+    start_scheduler()
     app.run(host="0.0.0.0", port=8000, debug=True)
+
+
+init_db()
+start_scheduler()

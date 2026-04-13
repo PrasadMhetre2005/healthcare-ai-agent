@@ -55,3 +55,13 @@ curl -X POST http://127.0.0.1:8000/alerts/sms ^
   -H "Content-Type: application/json" ^
   -d "{\"to\":\"+15551234567\",\"template\":\"care_gap\",\"data\":{\"patient_name\":\"Sarah\",\"gap\":\"Annual exam\",\"due\":\"this week\"}}"
 ```
+
+**SMS logging + retries**
+- All SMS sends are logged to `api/sms_log.db`
+- Failed sends retry up to 3 times
+
+**Daily reminder scheduler**
+- Controlled by `.env`:
+  - `DAILY_REMINDERS_ENABLED=true|false`
+  - `DAILY_REMINDERS_TIME=09:00`
+- Reminders list: `api/reminders.json`
