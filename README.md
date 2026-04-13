@@ -19,8 +19,12 @@ pip install -r api\\requirements.txt
 python api\\app.py
 ```
 
-2. Frontend
-Open `web/index.html` in a browser.
+2. Frontend (React)
+```
+cd web
+npm install
+npm run dev
+```
 
 **API endpoints**
 - `POST /care-gaps`

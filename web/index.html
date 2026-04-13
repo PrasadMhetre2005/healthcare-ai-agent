@@ -2,39 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Healthcare AI Agent MVP</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>web</title>
   </head>
   <body>
-    <main class="container">
-      <header>
-        <h1>Healthcare AI Agent MVP</h1>
-        <p>Care gap alerts, appointment optimization, and patient Q&amp;A</p>
-      </header>
-
-      <section class="card">
-        <h2>Care Gap Alerts</h2>
-        <textarea id="careGapsInput" rows="10"></textarea>
-        <button id="careGapsBtn">Generate Care Gaps</button>
-        <pre id="careGapsOutput"></pre>
-      </section>
-
-      <section class="card">
-        <h2>Appointment Optimization</h2>
-        <textarea id="apptInput" rows="8"></textarea>
-        <button id="apptBtn">Optimize Appointment</button>
-        <pre id="apptOutput"></pre>
-      </section>
-
-      <section class="card">
-        <h2>Patient-Doctor Q&amp;A</h2>
-        <textarea id="qaInput" rows="5"></textarea>
-        <button id="qaBtn">Answer Question</button>
-        <pre id="qaOutput"></pre>
-      </section>
-    </main>
-
-    <script src="app.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
