@@ -16,7 +16,7 @@ Minimal MVP for:
 python -m venv .venv
 .venv\\Scripts\\activate
 pip install -r api\\requirements.txt
-uvicorn api.app:app --reload
+python api\\app.py
 ```
 
 2. Frontend
