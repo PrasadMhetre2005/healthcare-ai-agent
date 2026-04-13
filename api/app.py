@@ -1,7 +1,13 @@
 from datetime import datetime, timedelta
+import os
 from flask import Flask, jsonify, request
+from flask_cors import CORS
+from dotenv import load_dotenv
+from twilio.rest import Client
 
+load_dotenv()
 app = Flask(__name__)
+CORS(app)
 
 
 def _parse_iso_date(value: str):
@@ -145,6 +151,63 @@ def patient_doctor_qa():
             "sources": ["internal-knowledge-base"],
         }
     )
+
+
+@app.post("/alerts/sms")
+def send_sms_alert():
+    payload = request.get_json(force=True) or {}
+    to_number = payload.get("to")
+    body = payload.get("message")
+    template = payload.get("template")
+    template_data = payload.get("data", {})
+
+    if template and not body:
+        body = build_sms_message(template, template_data)
+
+    if not to_number or not body:
+        return jsonify({"error": "Missing 'to' or 'message'"}), 400
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+
+    if not account_sid or not auth_token or not from_number:
+        return (
+            jsonify(
+                {
+                    "error": "Twilio credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER."
+                }
+            ),
+            500,
+        )
+
+    client = Client(account_sid, auth_token)
+    message = client.messages.create(
+        body=body,
+        from_=from_number,
+        to=to_number,
+    )
+
+    return jsonify({"status": "sent", "sid": message.sid, "message": body})
+
+
+def build_sms_message(template: str, data: dict) -> str:
+    patient = data.get("patient_name", "Patient")
+    if template == "care_gap":
+        gap = data.get("gap", "preventive care")
+        due = data.get("due", "soon")
+        return (
+            f"Hi {patient}, your care gap alert: {gap} is due {due}. "
+            "Please schedule your visit."
+        )
+    if template == "appointment":
+        date = data.get("date", "an upcoming date")
+        provider = data.get("provider", "your clinician")
+        return (
+            f"Hi {patient}, reminder: appointment with {provider} on {date}. "
+            "Reply to confirm or reschedule."
+        )
+    return data.get("message", "Healthcare notification.")
 
 
 if __name__ == "__main__":

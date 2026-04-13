@@ -38,5 +38,27 @@
   "qa_example": {
     "patient_id": "P-1001",
     "question": "Is it safe to take metformin if I missed a dose yesterday?"
+  },
+  "sms_care_gap_template": {
+    "to": "+15551234567",
+    "template": "care_gap",
+    "data": {
+      "patient_name": "Sarah",
+      "gap": "Annual exam",
+      "due": "this week"
+    }
+  },
+  "sms_appointment_template": {
+    "to": "+15551234567",
+    "template": "appointment",
+    "data": {
+      "patient_name": "Sarah",
+      "provider": "Dr. Patel",
+      "date": "Apr 20 at 10:00 AM"
+    }
+  },
+  "sms_custom_message": {
+    "to": "+15551234567",
+    "message": "Care gap: annual exam overdue. Please schedule."
   }
 }

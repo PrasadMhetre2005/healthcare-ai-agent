@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
 
 const API_BASE = "http://127.0.0.1:8000";
@@ -45,20 +45,23 @@ const defaults = {
 };
 
 function App() {
-  const [careInput, setCareInput] = useState(
-    JSON.stringify(defaults.care_gaps_example, null, 2)
-  );
-  const [careOutput, setCareOutput] = useState("");
-
-  const [apptInput, setApptInput] = useState(
-    JSON.stringify(defaults.appointment_opt_example, null, 2)
-  );
-  const [apptOutput, setApptOutput] = useState("");
-
-  const [qaInput, setQaInput] = useState(
-    JSON.stringify(defaults.qa_example, null, 2)
+  const [searchInput, setSearchInput] = useState(
+    "Ask about medications, symptoms, or follow-ups..."
   );
   const [qaOutput, setQaOutput] = useState("");
+  const [careOutput, setCareOutput] = useState("");
+  const [apptOutput, setApptOutput] = useState("");
+  const [voiceStatus, setVoiceStatus] = useState("Idle");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceAnswer, setVoiceAnswer] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState("en-US");
+  const recognitionRef = useRef(null);
+  const [smsPhone, setSmsPhone] = useState("+15551234567");
+  const [smsResult, setSmsResult] = useState("");
+  const [smsCustom, setSmsCustom] = useState(
+    "Care gap: annual exam overdue. Please schedule."
+  );
 
   async function callApi(path, payload) {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -69,101 +72,365 @@ function App() {
     return res.json();
   }
 
+  async function runCareGaps() {
+    setCareOutput("Loading...");
+    try {
+      const data = await callApi("/care-gaps", defaults.care_gaps_example);
+      setCareOutput(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setCareOutput(`Error: ${err.message}`);
+    }
+  }
+
+  async function runAppointment() {
+    setApptOutput("Loading...");
+    try {
+      const data = await callApi(
+        "/appointment/optimize",
+        defaults.appointment_opt_example
+      );
+      setApptOutput(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setApptOutput(`Error: ${err.message}`);
+    }
+  }
+
+  async function runQA() {
+    setQaOutput("Loading...");
+    try {
+      const payload = {
+        ...defaults.qa_example,
+        question: searchInput || defaults.qa_example.question
+      };
+      const data = await callApi("/qa", payload);
+      setQaOutput(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setQaOutput(`Error: ${err.message}`);
+    }
+  }
+
+  async function runVoiceQA(transcript) {
+    setVoiceAnswer("Loading...");
+    try {
+      const payload = {
+        ...defaults.qa_example,
+        question: transcript || defaults.qa_example.question
+      };
+      const data = await callApi("/qa", payload);
+      const answer = data.answer || "No answer available.";
+      setVoiceAnswer(answer);
+      if ("speechSynthesis" in window) {
+        const utter = new SpeechSynthesisUtterance(answer);
+        utter.rate = 1;
+        utter.pitch = 1;
+        utter.lang = voiceLang;
+        window.speechSynthesis.speak(utter);
+      }
+    } catch (err) {
+      setVoiceAnswer(`Error: ${err.message}`);
+    }
+  }
+
+  function startVoice() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceStatus("Speech recognition not supported in this browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = voiceLang;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setVoiceStatus("Listening...");
+      setIsListening(true);
+    };
+    recognition.onend = () => {
+      setVoiceStatus("Idle");
+      setIsListening(false);
+    };
+    recognition.onerror = () => {
+      setVoiceStatus("Error listening.");
+      setIsListening(false);
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setVoiceTranscript(transcript);
+      runVoiceQA(transcript);
+    };
+
+    recognition.start();
+  }
+
+  function stopVoice() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setVoiceStatus("Stopped");
+      setIsListening(false);
+    }
+  }
+
+  async function sendSms(payload) {
+    setSmsResult("Sending...");
+    try {
+      const data = await callApi("/alerts/sms", payload);
+      setSmsResult(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setSmsResult(`Error: ${err.message}`);
+    }
+  }
+
   return (
-    <div className="page">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Healthcare AI Agent MVP</p>
-          <h1>Care Gap Alerts, Smart Scheduling, and Patient Q&amp;A</h1>
-          <p className="sub">
-            A minimal React UI that connects to the local API server for real
-            time care-gap and appointment recommendations.
-          </p>
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="logo">
+          <span className="logo-icon">+</span>
+          MediBuddy
         </div>
-        <div className="hero-card">
-          <p className="hero-card-title">Endpoints</p>
-          <ul>
-            <li>POST /care-gaps</li>
-            <li>POST /appointment/optimize</li>
-            <li>POST /qa</li>
-          </ul>
-          <p className="muted">API base: {API_BASE}</p>
-        </div>
-      </header>
-
-      <section className="grid">
-        <div className="panel">
-          <h2>Care Gap Alerts</h2>
-          <textarea
-            rows="12"
-            value={careInput}
-            onChange={(e) => setCareInput(e.target.value)}
-          />
-          <button
-            onClick={async () => {
-              setCareOutput("Loading...");
-              try {
-                const payload = JSON.parse(careInput);
-                const data = await callApi("/care-gaps", payload);
-                setCareOutput(JSON.stringify(data, null, 2));
-              } catch (err) {
-                setCareOutput(`Error: ${err.message}`);
-              }
-            }}
-          >
-            Generate Care Gaps
+        <nav className="nav">
+          <button className="nav-item active">
+            <span className="nav-icon">🩺</span>
+            Check Symptoms
           </button>
-          <pre>{careOutput}</pre>
-        </div>
-
-        <div className="panel">
-          <h2>Appointment Optimization</h2>
-          <textarea
-            rows="10"
-            value={apptInput}
-            onChange={(e) => setApptInput(e.target.value)}
-          />
-          <button
-            onClick={async () => {
-              setApptOutput("Loading...");
-              try {
-                const payload = JSON.parse(apptInput);
-                const data = await callApi("/appointment/optimize", payload);
-                setApptOutput(JSON.stringify(data, null, 2));
-              } catch (err) {
-                setApptOutput(`Error: ${err.message}`);
-              }
-            }}
-          >
-            Optimize Appointment
+          <button className="nav-item">
+            <span className="nav-icon">💓</span>
+            Manage Vitals
           </button>
-          <pre>{apptOutput}</pre>
-        </div>
-
-        <div className="panel">
-          <h2>Patient Q&amp;A</h2>
-          <textarea
-            rows="7"
-            value={qaInput}
-            onChange={(e) => setQaInput(e.target.value)}
-          />
-          <button
-            onClick={async () => {
-              setQaOutput("Loading...");
-              try {
-                const payload = JSON.parse(qaInput);
-                const data = await callApi("/qa", payload);
-                setQaOutput(JSON.stringify(data, null, 2));
-              } catch (err) {
-                setQaOutput(`Error: ${err.message}`);
-              }
-            }}
-          >
-            Answer Question
+          <button className="nav-item">
+            <span className="nav-icon">📅</span>
+            Book Appointment
           </button>
-          <pre>{qaOutput}</pre>
+          <button className="nav-item">
+            <span className="nav-icon">📁</span>
+            My Records
+          </button>
+        </nav>
+        <div className="sidebar-footer">
+          <p>AI Agent</p>
+          <small>Connected to local API</small>
         </div>
-      </section>
+      </aside>
+
+      <main className="main">
+        <header className="header">
+          <h1>Hi Sarah, how can MediBuddy help you today?</h1>
+          <span className="header-pill">AI Powered</span>
+        </header>
+
+        <section className="hero-grid">
+          <div className="search-card">
+            <div className="bot">
+              <div className="bot-face">
+                <span className="bot-eye" />
+                <span className="bot-eye" />
+                <span className="bot-smile" />
+              </div>
+              <div>
+                <p className="bot-label">Ask or describe symptoms</p>
+                <p className="bot-sub">Your personal health assistant</p>
+              </div>
+            </div>
+            <div className="search-bar">
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Type or speak a question..."
+              />
+              <button className="icon-btn" onClick={runQA} aria-label="Ask">
+                <span className="mic">🎤</span>
+                Ask
+              </button>
+            </div>
+            <pre className="result">{qaOutput || "Q&A response will appear here."}</pre>
+          </div>
+
+          <div className="insight-card">
+            <h3>Personal Insight</h3>
+            <div className="insight-row">
+              <span>Last BP</span>
+              <span className="pill">118/78 mmHg</span>
+            </div>
+            <div className="insight-row">
+              <span>Current Medication</span>
+              <span>Cetirizine 10mg (8am)</span>
+            </div>
+            <div className="insight-row">
+              <span>Health Goal</span>
+              <span>Steps 7500/10000</span>
+            </div>
+            <div className="progress">
+              <div className="bar" />
+            </div>
+            <div className="insight-cta">
+              <p>Care Gaps</p>
+              <button onClick={runCareGaps}>Analyze</button>
+            </div>
+            <div className="doctor-illustration">
+              <div className="doctor-head" />
+              <div className="doctor-body" />
+              <div className="doctor-card">
+                <span>✔</span>
+                Summary
+              </div>
+            </div>
+            <pre className="result">{careOutput || "Care gap alert output."}</pre>
+          </div>
+        </section>
+
+        <section className="quick-actions">
+          <h2>Quick Actions</h2>
+          <div className="action-grid">
+            <button className="action-card green" onClick={runCareGaps}>
+              <span className="action-icon">🔍</span>
+              <span>Start Symptom Check</span>
+              <strong>Care Gap Scan</strong>
+            </button>
+            <button className="action-card blue" onClick={runAppointment}>
+              <span className="action-icon">📈</span>
+              <span>View Your Vitals</span>
+              <strong>Optimize Appointment</strong>
+            </button>
+            <button className="action-card amber" onClick={runQA}>
+              <span className="action-icon">🗓️</span>
+              <span>Ask a Question</span>
+              <strong>Patient Q&amp;A</strong>
+            </button>
+          </div>
+          <pre className="result">{apptOutput || "Appointment optimization output."}</pre>
+        </section>
+
+        <section className="voice-section">
+          <div className="voice-card">
+            <h2>Voice Assistant</h2>
+            <p className="voice-sub">
+              Tap to speak your healthcare question. The assistant will answer and
+              read it back to you.
+            </p>
+            <div className="voice-controls">
+              <button className="voice-btn" onClick={startVoice}>
+                🎙️ Start Listening
+              </button>
+              <button className="voice-btn stop" onClick={stopVoice}>
+                ⏹ Stop Listening
+              </button>
+              <span className="voice-status">{voiceStatus}</span>
+            </div>
+            <div className="voice-controls secondary">
+              <label className="voice-label" htmlFor="voice-lang">
+                Language
+              </label>
+              <select
+                id="voice-lang"
+                className="voice-select"
+                value={voiceLang}
+                onChange={(e) => setVoiceLang(e.target.value)}
+              >
+                <option value="en-US">English (US)</option>
+                <option value="en-IN">English (India)</option>
+                <option value="hi-IN">Hindi</option>
+                <option value="mr-IN">Marathi</option>
+                <option value="es-ES">Spanish</option>
+              </select>
+              <span className={`wave ${isListening ? "active" : ""}`}>
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+            <div className="voice-grid">
+              <div>
+                <h3>Transcript</h3>
+                <div className="voice-box">
+                  {voiceTranscript || "Your spoken question will appear here."}
+                </div>
+              </div>
+              <div>
+                <h3>AI Response</h3>
+                <div className="voice-box">
+                  {voiceAnswer || "The response will appear here."}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="sms-section">
+          <div className="sms-card">
+            <h2>SMS Alerts</h2>
+            <p className="voice-sub">
+              Send care gap and appointment reminders to patients.
+            </p>
+            <div className="sms-row">
+              <label htmlFor="sms-phone">Patient Mobile</label>
+              <input
+                id="sms-phone"
+                value={smsPhone}
+                onChange={(e) => setSmsPhone(e.target.value)}
+                placeholder="+15551234567"
+              />
+            </div>
+            <div className="sms-actions">
+              <button
+                className="action-card green"
+                onClick={() =>
+                  sendSms({
+                    to: smsPhone,
+                    template: "care_gap",
+                    data: {
+                      patient_name: "Sarah",
+                      gap: "Annual exam",
+                      due: "this week"
+                    }
+                  })
+                }
+              >
+                <span className="action-icon">✅</span>
+                <span>Care Gap</span>
+                <strong>Send Reminder</strong>
+              </button>
+              <button
+                className="action-card amber"
+                onClick={() =>
+                  sendSms({
+                    to: smsPhone,
+                    template: "appointment",
+                    data: {
+                      patient_name: "Sarah",
+                      provider: "Dr. Patel",
+                      date: "Apr 20 at 10:00 AM"
+                    }
+                  })
+                }
+              >
+                <span className="action-icon">📅</span>
+                <span>Appointment</span>
+                <strong>Send Reminder</strong>
+              </button>
+            </div>
+            <div className="sms-row">
+              <label htmlFor="sms-custom">Custom Message</label>
+              <textarea
+                id="sms-custom"
+                rows="3"
+                value={smsCustom}
+                onChange={(e) => setSmsCustom(e.target.value)}
+              />
+            </div>
+            <button
+              className="voice-btn"
+              onClick={() => sendSms({ to: smsPhone, message: smsCustom })}
+            >
+              Send Custom SMS
+            </button>
+            <pre className="result">{smsResult || "SMS responses appear here."}</pre>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
