@@ -76,7 +76,14 @@ export const AIConsultantPage = () => {
     setLoading(true);
 
     try {
+      console.log('Sending message:', text);
       const response = await chatService.sendMessage(text);
+      
+      console.log('Chat response received:', response);
+
+      if (!response || !response.response) {
+        throw new Error('Invalid response format: missing response field');
+      }
 
       const botMessage = {
         id: messages.length + 2,
@@ -86,16 +93,17 @@ export const AIConsultantPage = () => {
       };
 
       setMessages((prev) => [...prev, botMessage]);
+      toast.success('Response received!');
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('Chat error details:', error.message, error.response?.data);
       const errorMessage = {
         id: messages.length + 2,
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: 'Sorry, I encountered an error. Please try again. Error: ' + (error.message || 'Unknown error'),
         sender: 'bot',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      toast.error('Failed to get response from AI consultant');
+      toast.error('Failed to get response from AI consultant: ' + error.message);
     } finally {
       setLoading(false);
     }
