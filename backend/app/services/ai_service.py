@@ -5,26 +5,81 @@ from typing import Optional
 from datetime import datetime
 
 class AIService:
-    """Service for AI-powered insights and recommendations using Groq"""
+    """Service for AI-powered insights and recommendations using Groq API with Llama 3 70B"""
     
-    # Initialize client at class level
-    try:
-        api_key = os.getenv("GROQ_API_KEY", "")
-        if api_key and api_key != "your_groq_api_key_here":
-            client = Groq(api_key=api_key)
-        else:
-            client = None
-    except:
-        client = None
+    # Initialize Groq client at class level
+    API_KEY = os.getenv("GROQ_API_KEY")
+    MODEL = "llama-3-70b-versatile"
+    
+    _client = None
+    
+    @classmethod
+    def _get_client(cls):
+        """Get or create Groq client"""
+        if cls._client is None and cls.API_KEY:
+            cls._client = Groq(api_key=cls.API_KEY)
+        return cls._client
+    
+    @staticmethod
+    def _call_groq(prompt: str, system_prompt: str = "You are a helpful assistant.") -> Optional[str]:
+        """Make a call to Groq API"""
+        try:
+            client = AIService._get_client()
+            
+            # If API key not configured, return None (triggers mock response)
+            if not client:
+                return None
+            
+            message = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                model=AIService.MODEL,
+                temperature=0.7,
+                max_tokens=500,
+            )
+            
+            return message.choices[0].message.content
+        except Exception as e:
+            print(f"Groq error: {str(e)}")
+            return None
     
     @staticmethod
     def generate_health_insights(patient_data: dict, health_records: list) -> str:
         """Generate clinical insights from patient health data"""
         
-        # If no API key, return mock insights
-        if not AIService.client:
-            return """
-Based on your recent health records, here are key observations:
+        prompt = f"""You are a medical AI assistant. Analyze the following patient health data and provide clinical insights.
+
+Patient Data:
+- Name: {patient_data.get('name', 'Unknown')}
+- Age: {patient_data.get('age', 'Unknown')}
+- Blood Type: {patient_data.get('blood_type', 'Unknown')}
+
+Recent Health Records (last 30 days):
+{json.dumps([{
+    'date': str(r.get('recorded_date')),
+    'blood_pressure': f"{r.get('blood_pressure_systolic')}/{r.get('blood_pressure_diastolic')}",
+    'heart_rate': r.get('heart_rate'),
+    'temperature': r.get('temperature'),
+    'blood_glucose': r.get('blood_glucose'),
+    'weight': r.get('weight')
+} for r in health_records[:5]], indent=2)}
+
+Please provide:
+1. Key health observations
+2. Trends noticed  
+3. Areas of concern
+
+Keep response concise and to the point. Maximum 200 words."""
+        
+        response = AIService._call_groq(prompt)
+        
+        if response:
+            return response
+        
+        # Mock response if API key not configured
+        return """Based on your recent health records, here are key observations:
 
 1. **Key Health Observations**
    - Your vital signs have been relatively stable over the past 30 days
@@ -40,169 +95,119 @@ Based on your recent health records, here are key observations:
    - None at this time - keep monitoring regularly
    - Maintain current health habits
 
-**Note:** Full AI analysis requires Groq API configuration.
-            """
-        
-        prompt = f"""
-        You are a medical AI assistant. Analyze the following patient health data and provide clinical insights.
-        
-        Patient Data:
-        {json.dumps(patient_data, indent=2)}
-        
-        Recent Health Records (last 30 days):
-        {json.dumps([{
-            'date': str(r.get('recorded_date')),
-            'blood_pressure': f"{r.get('blood_pressure_systolic')}/{r.get('blood_pressure_diastolic')}",
-            'heart_rate': r.get('heart_rate'),
-            'temperature': r.get('temperature'),
-            'blood_glucose': r.get('blood_glucose'),
-            'weight': r.get('weight')
-        } for r in health_records[:5]], indent=2)}
-        
-        Please provide:
-        1. Key health observations
-        2. Trends noticed
-        3. Areas of concern
-        
-        Keep response concise and to the point.
-        """
-        
-        try:
-            response = AIService.client.chat.completions.create(
-                model="llama-3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "You are a medical advising AI assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=500
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"Error generating insights: {str(e)}\n\n(Make sure GROQ_API_KEY is configured in .env)"
+**Note:** For full AI analysis, please configure your GROQ_API_KEY in the .env file."""
     
     @staticmethod
     def generate_recommendations(patient_data: dict, health_records: list, recent_alerts: list) -> list:
         """Generate actionable health recommendations"""
         
-        # Mock recommendations if no API key
-        if not AIService.client:
-            return [
-                {
-                    "category": "lifestyle",
-                    "priority": "medium",
-                    "title": "Regular Exercise",
-                    "description": "Engage in 30 minutes of moderate exercise daily",
-                    "reason": "Improves cardiovascular health and overall fitness"
-                },
-                {
-                    "category": "diet",
-                    "priority": "high",
-                    "title": "Balanced Nutrition",
-                    "description": "Maintain a balanced diet with fruits, vegetables, and lean proteins",
-                    "reason": "Essential for maintaining healthy blood glucose and weight"
-                },
-                {
-                    "category": "appointment",
-                    "priority": "medium",
-                    "title": "Regular Checkup",
-                    "description": "Schedule a routine health checkup with your physician",
-                    "reason": "Regular monitoring helps detect potential issues early"
-                }
-            ]
+        prompt = f"""You are a medical AI assistant. Based on the following patient data and alerts, recommend specific health actions.
+
+Patient: {patient_data.get('name', 'Patient')}
+Blood Type: {patient_data.get('blood_type', 'Unknown')}
+
+Recent Alerts:
+{json.dumps([a.get('title') for a in recent_alerts[:3]], indent=2)}
+
+Generate 3-5 specific, actionable recommendations. For each recommendation, provide:
+- Category (lifestyle, medication, appointment, diet, or exercise)
+- Priority (low, medium, or high)
+- Title - short descriptive title
+- Description - specific action to take
+- Reason - why this is important
+
+Format as simple bullet points, not JSON."""
         
-        prompt = f"""
-        You are a medical AI assistant. Based on the following patient data, recommend health actions.
+        response = AIService._call_groq(prompt)
         
-        Patient Data:
-        {json.dumps(patient_data, indent=2)}
+        if response:
+            # Parse recommendations from text response
+            recommendations = []
+            for line in response.split('\n'):
+                if line.strip():
+                    recommendations.append({
+                        "category": "general",
+                        "priority": "medium",
+                        "title": "Health Recommendation",
+                        "description": line.strip(),
+                        "reason": "Based on your health data"
+                    })
+            return recommendations[:5]  # Return up to 5 recommendations
         
-        Recent Alerts:
-        {json.dumps([a.get('title') for a in recent_alerts[:3]], indent=2)}
-        
-        Generate 3-5 specific, actionable recommendations. Format as JSON array with fields:
-        - category (lifestyle, medication, appointment, diet, exercise)
-        - priority (low, medium, high)
-        - title
-        - description
-        - reason
-        
-        Return only valid JSON array.
-        """
-        
-        try:
-            response = AIService.client.chat.completions.create(
-                model="llama-3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "You are a medical advising AI assistant. Return only valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=800
-            )
-            
-            response_text = response.choices[0].message.content
-            # Try to parse JSON from response
-            try:
-                recommendations = json.loads(response_text)
-                return recommendations if isinstance(recommendations, list) else []
-            except:
-                return []
-                
-        except Exception as e:
-            print(f"Error generating recommendations: {str(e)}")
-            return []
+        # Mock recommendations if API key not configured
+        return [
+            {
+                "category": "lifestyle",
+                "priority": "medium",
+                "title": "Regular Exercise",
+                "description": "Engage in 30 minutes of moderate exercise daily",
+                "reason": "Improves cardiovascular health and overall fitness"
+            },
+            {
+                "category": "diet",
+                "priority": "high",
+                "title": "Balanced Nutrition",
+                "description": "Maintain a balanced diet with fruits, vegetables, and lean proteins",
+                "reason": "Essential for maintaining healthy blood glucose and weight"
+            },
+            {
+                "category": "appointment",
+                "priority": "medium",
+                "title": "Regular Checkup",
+                "description": "Schedule a routine health checkup with your physician",
+                "reason": "Regular monitoring helps detect potential issues early"
+            }
+        ]
     
     @staticmethod
     def check_medication_interactions(medications: list) -> dict:
         """Check for potential medication interactions"""
         
-        # Mock response if no API key
-        if not AIService.client:
+        prompt = f"""You are a pharmacology AI expert. Check for potential interactions between these medications:
+{', '.join(medications)}
+
+Provide a brief analysis indicating:
+1. Whether interactions exist (yes/no)
+2. What interactions if any
+3. Severity level (low/medium/high)
+
+Keep response concise and factual."""
+        
+        response = AIService._call_groq(prompt)
+        
+        if response:
             return {
-                "has_interactions": False,
-                "interactions": [],
-                "severity": "low"
+                "has_interactions": "interaction" in response.lower() or "contraindicated" in response.lower(),
+                "interactions": [response],
+                "severity": "medium" if "contraindicated" in response.lower() else "low"
             }
         
-        prompt = f"""
-        Check for potential interactions between these medications: {', '.join(medications)}
-        
-        Return JSON with fields:
-        - has_interactions (boolean)
-        - interactions (list of strings describing interactions)
-        - severity (low, medium, high)
-        
-        Return only valid JSON.
-        """
-        
-        try:
-            response = AIService.client.chat.completions.create(
-                model="llama-3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "You are a pharmacology AI. Return only valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=300
-            )
-            
-            response_text = response.choices[0].message.content
-            try:
-                return json.loads(response_text)
-            except:
-                return {"has_interactions": False, "interactions": [], "severity": "unknown"}
-                
-        except Exception as e:
-            return {"has_interactions": False, "interactions": [], "severity": "unknown"}
+        # Mock response if API key not configured
+        return {
+            "has_interactions": False,
+            "interactions": [],
+            "severity": "low"
+        }
     
     @staticmethod
     def generate_chat_response(context: str) -> str:
         """Generate chat response for healthcare consultant"""
         
-        # If no API key, return mock response
-        if not AIService.client:
-            return """I appreciate your question! Based on your health profile, here are some general wellness recommendations:
+        system_prompt = """You are a compassionate and knowledgeable AI Healthcare Consultant. Your role is to:
+1. Provide helpful health advice based on user queries
+2. Consider the patient's health data context
+3. Encourage lifestyle improvements
+4. Suggest consulting with doctors for serious concerns
+5. Be empathetic and non-judgmental
+6. Keep responses concise and actionable (2-3 paragraphs)"""
+        
+        response = AIService._call_groq(context, system_prompt)
+        
+        if response:
+            return response
+        
+        # Mock response if API key not configured
+        return """I appreciate your question! Based on your health profile, here are some general wellness recommendations:
 
 1. **Hydration**: Ensure you're drinking enough water throughout the day (8-10 glasses)
 2. **Sleep**: Aim for 7-9 hours of quality sleep nightly
@@ -212,26 +217,4 @@ Based on your recent health records, here are key observations:
 However, for personalized medical advice, I recommend consulting with your healthcare provider. If you've provided your health data, I can give more specific recommendations once the AI service is configured.
 
 Is there anything specific about your health you'd like to discuss?"""
-        
-        try:
-            response = AIService.client.chat.completions.create(
-                model="llama-3-70b-versatile",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a compassionate and knowledgeable AI Healthcare Consultant. Your role is to:
-1. Provide helpful health advice based on user queries
-2. Consider the patient's health data context
-3. Encourage lifestyle improvements
-4. Suggest consulting with doctors for serious concerns
-5. Be empathetic and non-judgmental
-6. Keep responses concise and actionable (2-3 paragraphs)"""
-                    },
-                    {"role": "user", "content": context}
-                ],
-                temperature=0.7,
-                max_tokens=500
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"I apologize, I encountered an issue processing your query. Please try again. Error: {str(e)[:100]}"
+
