@@ -1,15 +1,19 @@
 from groq import Groq
 import os
 import json
+import logging
+import traceback
 from typing import Optional
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 class AIService:
     """Service for AI-powered insights and recommendations using Groq API with Llama 3 70B"""
     
     # Initialize Groq client at class level
     API_KEY = os.getenv("GROQ_API_KEY")
-    MODEL = "llama-3-70b-versatile"
+    MODEL = "llama-3.3-70b-versatile"  # Updated from llama-3-70b-versatile
     
     _client = None
     
@@ -17,19 +21,29 @@ class AIService:
     def _get_client(cls):
         """Get or create Groq client"""
         if cls._client is None and cls.API_KEY:
-            cls._client = Groq(api_key=cls.API_KEY)
+            try:
+                logger.info(f"Initializing Groq client with API key: {cls.API_KEY[:20]}...")
+                cls._client = Groq(api_key=cls.API_KEY)
+                logger.info("Groq client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq client: {str(e)}")
+                logger.error(traceback.format_exc())
+                return None
         return cls._client
     
     @staticmethod
     def _call_groq(prompt: str, system_prompt: str = "You are a helpful assistant.") -> Optional[str]:
         """Make a call to Groq API"""
         try:
+            logger.info("Starting Groq API call...")
             client = AIService._get_client()
             
             # If API key not configured, return None (triggers mock response)
             if not client:
+                logger.warning("Groq client not available - returning None")
                 return None
             
+            logger.info(f"Calling Groq with model: {AIService.MODEL}")
             message = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -40,9 +54,12 @@ class AIService:
                 max_tokens=500,
             )
             
-            return message.choices[0].message.content
+            response_text = message.choices[0].message.content
+            logger.info(f"Groq response received successfully: {len(response_text)} characters")
+            return response_text
         except Exception as e:
-            print(f"Groq error: {str(e)}")
+            logger.error(f"Groq API error: {str(e)}")
+            logger.error(f"Full error: {traceback.format_exc()}")
             return None
     
     @staticmethod
