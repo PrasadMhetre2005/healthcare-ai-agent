@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.utils.database import Base, engine
 # Import all models so they are registered with Base
-from app.models import User, Patient, Doctor, HealthData, Alert, Recommendation
+from app.models import User, Patient, Doctor, HealthData, Alert, Recommendation, Appointment, CareGap
 from app.routes import all_routers
 
 # Create database tables
